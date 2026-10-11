@@ -67,6 +67,7 @@ add_gpus([
     ))
 
 add_gpus([
+        GPUId(504),
         GPUId(505),
         GPUId(506),
         GPUId(508),
