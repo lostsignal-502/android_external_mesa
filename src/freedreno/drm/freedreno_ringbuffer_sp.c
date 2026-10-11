@@ -338,12 +338,13 @@ fd_submit_sp_flush(struct fd_submit *submit, int in_fence_fd, bool use_fence_fd)
     */
    simple_mtx_lock(&dev->submit_lock);
 
-   /* If there are deferred submits from another fd_pipe, flush them now,
-    * since we can't merge submits from different submitqueue's (ie. they
-    * could have different priority, etc)
+   /* Flush preceding work before adding a no-merge submit or switching
+    * fd_pipe: different submitqueues may have different priorities, etc.
+    * This also keeps a no-merge submit from inheriting the group's fence.
     */
    if (!list_is_empty(&dev->deferred_submits) &&
-       (last_submit(&dev->deferred_submits)->pipe != submit->pipe)) {
+       (submit->no_merge ||
+        last_submit(&dev->deferred_submits)->pipe != submit->pipe)) {
       flush_deferred_submits(dev);
    }
 
@@ -378,7 +379,8 @@ fd_submit_sp_flush(struct fd_submit *submit, int in_fence_fd, bool use_fence_fd)
     * reference to the fd, and merged all the in-fence-fd's when we flush the
     * deferred submits
     */
-   if (!use_fence_fd && !has_shared && should_defer(submit)) {
+   if (!submit->no_merge && !use_fence_fd && !has_shared &&
+       should_defer(submit)) {
       DEBUG_MSG("defer: %u", submit->fence);
       dev->deferred_cmds += fd_ringbuffer_cmd_count(submit->primary);
       assert(dev->deferred_cmds == fd_dev_count_deferred_cmds(dev));
