@@ -139,6 +139,14 @@ fallback_use_bypass(struct fd_batch *batch)
 {
    struct pipe_framebuffer_state *pfb = &batch->framebuffer;
 
+   /* A504 has only 136 KiB of GMEM and no sample-based autotuning.
+    * Replaying geometry across many tiles can make complex render passes
+    * much slower than bypass.  Prefer bypass on this part; A5xx does not
+    * expose multisampled-render-to-texture, which would require GMEM.
+    */
+   if (batch->ctx->screen->gpu_id == 504)
+      return true;
+
    /* Fallback logic if we have no historical data about the rendertarget: */
    if (batch->cleared || batch->gmem_reason ||
        (batch->num_draws > 5) || (pfb->samples > 1)) {
