@@ -2751,6 +2751,14 @@ calc_cs_barrier_reg_budget(struct ir3_shader_variant *v,
       (wave_pairs_per_wg * (double_threadsize ? 2 : 1));
    assert(vec4_regs_per_thread > 0);
 
+   /* A504 needs a tighter bound for simultaneous barrier residency.
+    * A 64-invocation workgroup runs with 16 full footprints or 15 full
+    * plus one half, but deadlocks with 16 full plus one half.
+    * Keep this bound local to barriers; it is not a global regfile size.
+    */
+   if (fd_dev_gpu_id(compiler->dev_id) == 504)
+      vec4_regs_per_thread /= 2;
+
    return vec4_regs_per_thread * 4 * 2;
 }
 
