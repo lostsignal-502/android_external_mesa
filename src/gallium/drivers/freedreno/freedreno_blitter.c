@@ -209,6 +209,97 @@ build_f16_copy_fs_shader(struct pipe_screen *pscreen, enum pipe_texture_target t
    return b->shader;
 }
 
+static bool
+use_fragcoord_blit(struct fd_context *ctx, const struct pipe_blit_info *info)
+{
+   const struct pipe_resource *src = info->src.resource;
+   const struct pipe_resource *dst = info->dst.resource;
+
+   if (ctx->screen->gpu_id != 504)
+      return false;
+
+   if (src->target != PIPE_TEXTURE_2D || dst->target != PIPE_TEXTURE_2D ||
+       src->nr_samples > 1 || dst->nr_samples > 1 ||
+       src->nr_storage_samples > 1 || dst->nr_storage_samples > 1 ||
+       info->src.level > src->last_level || info->dst.level > dst->last_level ||
+       info->src.box.z || info->dst.box.z ||
+       info->src.box.depth != 1 || info->dst.box.depth != 1)
+      return false;
+
+   if (info->src.format != info->dst.format ||
+       (info->src.format != PIPE_FORMAT_R8G8B8A8_UNORM &&
+        info->src.format != PIPE_FORMAT_B8G8R8A8_UNORM) ||
+       info->mask != PIPE_MASK_RGBA || info->filter != PIPE_TEX_FILTER_NEAREST ||
+       info->alpha_blend || info->swizzle_enable ||
+       info->window_rectangle_include || info->num_window_rectangles ||
+       info->dst_sample || info->sample0_only)
+      return false;
+
+   if (!info->src.box.width || !info->src.box.height ||
+       info->dst.box.width <= 0 || info->dst.box.height <= 0)
+      return false;
+
+   /* Use fragment coordinates for fully in-bounds sources, including reversed
+    * boxes.  Widen before adding the signed spans to avoid integer overflow.
+    */
+   int64_t x0 = info->src.box.x;
+   int64_t y0 = info->src.box.y;
+   int64_t x1 = x0 + info->src.box.width;
+   int64_t y1 = y0 + info->src.box.height;
+
+   return MIN2(x0, x1) >= 0 && MIN2(y0, y1) >= 0 &&
+          MAX2(x0, x1) <= u_minify(src->width0, info->src.level) &&
+          MAX2(y0, y1) <= u_minify(src->height0, info->src.level);
+}
+
+static nir_shader *
+build_fragcoord_blit_fs(struct pipe_screen *pscreen)
+{
+   const nir_shader_compiler_options *options =
+      pscreen->nir_options[MESA_SHADER_FRAGMENT];
+   nir_builder _b = nir_builder_init_simple_shader(
+      MESA_SHADER_FRAGMENT, options, "a504 fragcoord blit");
+   nir_builder *b = &_b;
+   b->shader->info.fs.origin_upper_left = true;
+
+   nir_variable *out_color = nir_variable_create(
+      b->shader, nir_var_shader_out, glsl_vec4_type(), "color0");
+   out_color->data.location = FRAG_RESULT_DATA0;
+   b->shader->num_outputs++;
+
+   b->shader->info.num_ubos = 1;
+   b->shader->num_uniforms = 2;
+   nir_def *pos = nir_load_frag_coord(b);
+   nir_def *coord[2];
+
+   /* Each axis uses (destination origin, scale, source origin, inverse size).
+    * Keep the axes independent of interpolated texture coordinates.
+    */
+   for (unsigned i = 0; i < 2; i++) {
+      nir_def *transform = nir_load_ubo(
+         b, 4, 32, nir_imm_int(b, 0), nir_imm_int(b, i * 16),
+         .align_mul = 16, .range_base = i * 16, .range = 16);
+      nir_def *offset = nir_fsub(b, nir_channel(b, pos, i),
+                                nir_channel(b, transform, 0));
+      nir_def *scaled = nir_fmul(b, offset, nir_channel(b, transform, 1));
+      coord[i] = nir_fmul(
+         b, nir_fadd(b, nir_channel(b, transform, 2), scaled),
+         nir_channel(b, transform, 3));
+   }
+
+   nir_def *tex = nir_tex(b, nir_vec2(b, coord[0], coord[1]),
+                          .texture_index = 0, .sampler_index = 0,
+                          .dim = GLSL_SAMPLER_DIM_2D,
+                          .dest_type = nir_type_float32);
+   b->shader->info.num_textures = 1;
+   BITSET_SET(b->shader->info.textures_used, 0);
+   BITSET_SET(b->shader->info.samplers_used, 0);
+   nir_store_var(b, out_color, tex, 0xf);
+   pscreen->finalize_nir(pscreen, b->shader, true);
+
+   return b->shader;
+}
+
 bool
 fd_blitter_blit(struct fd_context *ctx, const struct pipe_blit_info *info)
 {
@@ -218,6 +309,7 @@ fd_blitter_blit(struct fd_context *ctx, const struct pipe_blit_info *info)
    struct pipe_surface dst_templ;
    struct pipe_sampler_view src_templ, *src_view;
    void *fs = NULL;
+   float transform[2][4];
 
    fd_blitter_prep(ctx, info);
 
@@ -251,6 +343,35 @@ fd_blitter_blit(struct fd_context *ctx, const struct pipe_blit_info *info)
             pipe, build_f16_copy_fs_shader(pipe->screen, target));
       }
       fs = ctx->f16_blit_fs[target];
+   }
+
+   if (src_view && use_fragcoord_blit(ctx, info)) {
+      if (!ctx->fragcoord_blit_fs) {
+         ctx->fragcoord_blit_fs = pipe_shader_from_nir(
+            pipe, build_fragcoord_blit_fs(pipe->screen));
+      }
+      if (ctx->fragcoord_blit_fs) {
+         const int src_origin[2] = {info->src.box.x, info->src.box.y};
+         const int src_span[2] = {info->src.box.width, info->src.box.height};
+         const int dst_origin[2] = {info->dst.box.x, info->dst.box.y};
+         const int dst_span[2] = {info->dst.box.width, info->dst.box.height};
+         const unsigned src_size[2] = {
+            u_minify(src->width0, info->src.level),
+            u_minify(src->height0, info->src.level),
+         };
+         for (unsigned i = 0; i < 2; i++) {
+            transform[i][0] = dst_origin[i];
+            transform[i][1] = (float)src_span[i] / dst_span[i];
+            transform[i][2] = src_origin[i];
+            transform[i][3] = 1.0f / src_size[i];
+         }
+         struct pipe_constant_buffer cb = {
+            .buffer_size = sizeof(transform),
+            .user_buffer = transform,
+         };
+         pipe->set_constant_buffer(pipe, MESA_SHADER_FRAGMENT, 0, &cb);
+         fs = ctx->fragcoord_blit_fs;
+      }
    }
 
    /* Copy. */
