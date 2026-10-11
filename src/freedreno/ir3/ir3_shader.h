@@ -426,6 +426,9 @@ struct ir3_shader_key {
           * enabled
           */
          unsigned force_dual_color_blend : 1;
+
+         /* Reserve complete FS input slots for A5xx hardware stream-out. */
+         unsigned has_xfb : 1;
       };
       uint32_t global;
    };
@@ -494,6 +497,9 @@ ir3_shader_key_changes_fs(struct ir3_shader_key *key,
                 sizeof(key->fsampler_swizzles)))
          return true;
    }
+
+   if (last_key->has_xfb != key->has_xfb)
+      return true;
 
    if (last_key->rasterflat != key->rasterflat)
       return true;

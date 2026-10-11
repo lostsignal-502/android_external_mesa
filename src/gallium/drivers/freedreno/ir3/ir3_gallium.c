@@ -104,9 +104,10 @@ upload_shader_variant(struct ir3_shader_variant *v, void *arg)
    if (v->shader->initial_variants_done && !v->binning_pass) {
       perf_debug_message(debug, SHADER_INFO,
                            "%s shader: recompiling at draw time: global "
-                           "0x%08x, vfsamples %x/%x, astc %x/%x\n",
+                           "0x%08x, vfsamples %x/%x, astc %x/%x, xfb %u\n",
                            ir3_shader_stage(v), v->key.global, v->key.vsamples,
-                           v->key.fsamples, v->key.vastc_srgb, v->key.fastc_srgb);
+                           v->key.fsamples, v->key.vastc_srgb, v->key.fastc_srgb,
+                           v->key.has_xfb);
    }
 
    dump_shader_info(v, debug);

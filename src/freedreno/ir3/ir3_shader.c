@@ -774,6 +774,7 @@ ir3_setup_used_key(struct ir3_shader *shader)
       key->ucp_enables = 0xff;
 
    if (info->stage == MESA_SHADER_FRAGMENT) {
+      key->has_xfb = shader->compiler->gen == 5;
       key->fastc_srgb = ~0;
       key->fsamples = ~0;
       memset(key->fsampler_swizzles, 0xff, sizeof(key->fsampler_swizzles));
