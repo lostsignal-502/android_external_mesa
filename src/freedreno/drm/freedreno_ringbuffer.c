@@ -17,6 +17,7 @@ fd_submit_new(struct fd_pipe *pipe)
 {
    struct fd_submit *submit = pipe->funcs->submit_new(pipe);
    submit->refcnt = 1;
+   submit->no_merge = false;
    submit->pipe = fd_pipe_ref(pipe);
    submit->dev = fd_device_ref(pipe->dev);
    return submit;
@@ -45,6 +46,12 @@ fd_submit_ref(struct fd_submit *submit)
 {
    ref(&submit->refcnt);
    return submit;
+}
+
+void
+fd_submit_set_no_merge(struct fd_submit *submit)
+{
+   submit->no_merge = true;
 }
 
 struct fd_fence *

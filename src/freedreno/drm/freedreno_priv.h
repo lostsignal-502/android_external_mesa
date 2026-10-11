@@ -396,6 +396,7 @@ struct fd_submit {
 
    struct fd_ringbuffer *primary;
    uint32_t fence;
+   bool no_merge;
    struct list_head node;  /* node in fd_pipe::deferred_submits */
 };
 

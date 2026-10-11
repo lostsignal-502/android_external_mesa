@@ -565,7 +565,19 @@ fd_launch_grid(struct pipe_context *pctx,
    if (!fd_render_condition_check(pctx))
       return;
 
+   const bool isolate_compute = ctx->screen->gpu_id == 504;
+
+   /* A504 needs each compute dispatch in a separate submission.  Drain
+    * earlier nondraw work before acquiring the dispatch's fresh batch.
+    * Even a batch with only query/fence setup must use the normal flush.
+    */
+   if (isolate_compute && ctx->batch_nondraw)
+      fd_batch_flush(ctx->batch_nondraw);
+
    batch = fd_context_batch_nondraw(ctx);
+   if (isolate_compute)
+      fd_submit_set_no_merge(batch->submit);
+
    fd_batch_reference(&save_batch, ctx->batch);
    fd_batch_reference(&ctx->batch, batch);
 
@@ -625,6 +637,12 @@ fd_launch_grid(struct pipe_context *pctx,
 
    fd_batch_needs_flush(batch);
    ctx->launch_grid(ctx, info);
+
+   if (isolate_compute) {
+      fd_batch_flush(batch);
+      if (save_batch && save_batch->flushed)
+         fd_batch_reference(&save_batch, NULL);
+   }
 
    fd_batch_reference(&ctx->batch, save_batch);
    fd_batch_reference(&save_batch, NULL);

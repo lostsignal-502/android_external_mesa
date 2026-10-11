@@ -73,6 +73,12 @@ void fd_submit_del(struct fd_submit *submit);
 
 struct fd_submit * fd_submit_ref(struct fd_submit *submit);
 
+/* Prevent concatenation with preceding or subsequent submits.  Call before
+ * the first flush.  This seals a separate submission without waiting for
+ * the submit worker or GPU completion.
+ */
+void fd_submit_set_no_merge(struct fd_submit *submit);
+
 /* Allocate a new rb from the submit. */
 struct fd_ringbuffer *fd_submit_new_ringbuffer(struct fd_submit *submit,
                                                uint32_t size,
