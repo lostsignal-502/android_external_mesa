@@ -225,6 +225,12 @@ fd5_clear(struct fd_context *ctx, enum fd_buffer_mask buffers,
    struct fd_ringbuffer *ring = ctx->batch->draw;
    struct pipe_framebuffer_state *pfb = &ctx->batch->framebuffer;
 
+   /* Fast clears leave stale pixels with A504 bypass rendering.  Use the
+    * generic clear path until the fast-clear interaction is understood.
+    */
+   if (ctx->screen->gpu_id == 504)
+      return false;
+
    if ((buffers & (FD_BUFFER_DEPTH | FD_BUFFER_STENCIL)) &&
        is_z32(pfb->zsbuf.format))
       return false;
