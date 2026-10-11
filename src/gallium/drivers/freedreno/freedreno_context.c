@@ -392,6 +392,9 @@ fd_context_destroy(struct pipe_context *pctx)
       if (ctx->f16_blit_fs[i])
          pctx->delete_fs_state(pctx, ctx->f16_blit_fs[i]);
 
+   if (ctx->fragcoord_blit_fs)
+      pctx->delete_fs_state(pctx, ctx->fragcoord_blit_fs);
+
    fd_screen_lock(ctx->screen);
    list_del(&ctx->node);
    fd_screen_unlock(ctx->screen);
@@ -716,6 +719,9 @@ fd_context_init(struct fd_context *ctx, struct pipe_screen *pscreen,
    ctx->blitter = util_blitter_create(pctx);
    if (!ctx->blitter)
       goto fail;
+   /* Avoid the interpolation seam between two blit triangles on A504. */
+   if (screen->gpu_id == 504)
+      ctx->blitter->use_single_triangle = true;
 
    list_inithead(&ctx->hw_active_queries);
    list_inithead(&ctx->acc_active_queries);
