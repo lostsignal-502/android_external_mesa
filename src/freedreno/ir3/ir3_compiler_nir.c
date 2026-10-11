@@ -5267,7 +5267,10 @@ pack_inlocs(struct ir3_context *ctx)
       if (so->inputs[i].bary) {
          so->varying_in++;
          so->inputs[i].compmask = (1 << maxcomp) - 1;
-         inloc += maxcomp;
+         /* Stream-out can extend this mask with components unused by the FS.
+          * Keep those components from overlapping the next input slot.
+          */
+         inloc += so->key.has_xfb ? 4 : maxcomp;
       }
    }
 

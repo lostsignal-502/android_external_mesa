@@ -69,6 +69,7 @@ fd5_draw_vbo(struct fd_context *ctx, const struct pipe_draw_info *info,
          .fs = ctx->prog.fs,
          .key = {
             .rasterflat = ctx->rasterizer->flatshade,
+            .has_xfb = ir3_get_shader_info(ctx->prog.vs)->has_transform_feedback_varyings,
          },
          .clip_plane_enable = ctx->rasterizer->clip_plane_enable,
       },
