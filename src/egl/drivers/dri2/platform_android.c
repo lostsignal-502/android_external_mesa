@@ -793,6 +793,12 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
        * visual if it turns out RGBA visual is not available.
        */
       {HAL_PIXEL_FORMAT_BGRA_8888, PIPE_FORMAT_BGRA8888_UNORM},
+      /* Same rule for BGRX: only keep it if no RGBX visual is available.
+       * Drivers such as svga can only render BGRA/BGRX, and without this
+       * there would be no 8888 config without alpha, which makes clients
+       * like GLSurfaceView's default RGB888 chooser fail.
+       */
+      {HAL_PIXEL_FORMAT_BGRA_8888, PIPE_FORMAT_BGRX8888_UNORM},
    };
 
    unsigned int format_count[ARRAY_SIZE(visuals)] = {0};
@@ -816,11 +822,14 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
     * the buggy clients.
     */
    bool has_rgba = false;
+   bool has_rgbx = false;
    for (int i = 0; i < ARRAY_SIZE(visuals); i++) {
       /* Only enable BGRA configs when RGBA is not available. BGRA configs are
        * buggy on stock Android.
        */
-      if (visuals[i].hal_format == HAL_PIXEL_FORMAT_BGRA_8888 && has_rgba)
+      if (visuals[i].pipe_format == PIPE_FORMAT_BGRA8888_UNORM && has_rgba)
+         continue;
+      if (visuals[i].pipe_format == PIPE_FORMAT_BGRX8888_UNORM && has_rgbx)
          continue;
       for (int j = 0; dri2_dpy->driver_configs[j]; j++) {
          const struct gl_config *gl_config =
@@ -855,6 +864,8 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
 
       if (visuals[i].hal_format == HAL_PIXEL_FORMAT_RGBA_8888 && format_count[i])
          has_rgba = true;
+      if (visuals[i].hal_format == HAL_PIXEL_FORMAT_RGBX_8888 && format_count[i])
+         has_rgbx = true;
    }
 
    for (int i = 0; i < ARRAY_SIZE(format_count); i++) {
