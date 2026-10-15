@@ -429,6 +429,14 @@ Core Mesa environment variables
 
    chooses a different driver binary such as ``etnaviv`` or ``zink``.
 
+.. envvar:: MESA_DRM_RENDER_NODE
+
+   only use the DRM device with the given render node, such as
+   ``/dev/dri/renderD129``. Other DRM devices are not used, and there is no
+   fall back to them. It applies to the Android EGL platform and to the
+   Vulkan drivers that enumerate DRM devices through the common runtime. On
+   Android it can be set with the ``vendor.mesa.drm.render.node`` property.
+
 .. envvar:: DRI_PRIME_DEBUG
 
    print debug info about device selection decision-making

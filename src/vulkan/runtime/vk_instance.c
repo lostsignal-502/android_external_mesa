@@ -420,9 +420,17 @@ enumerate_drm_physical_devices_locked(struct vk_instance *instance)
    if (max_devices < 1)
       return VK_SUCCESS;
 
-   VkResult result;
+   const char *render_node = os_get_option("MESA_DRM_RENDER_NODE");
+
+   VkResult result = VK_SUCCESS;
    for (uint32_t i = 0; i < (uint32_t)max_devices; i++) {
       struct vk_physical_device *pdevice;
+
+      if (render_node &&
+          (!(devices[i]->available_nodes & (1 << DRM_NODE_RENDER)) ||
+           strcmp(devices[i]->nodes[DRM_NODE_RENDER], render_node) != 0))
+         continue;
+
       result = instance->physical_devices.try_create_for_drm(instance, devices[i], &pdevice);
 
       /* Incompatible DRM device, skip. */
